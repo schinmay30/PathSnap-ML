@@ -53,7 +53,14 @@ class PredictionMetrics(BaseModel):
     )
 
 
+class ObservationMatch(BaseModel):
+    observation_id: int
+    arc_id: int | None
+    status: str
+
+
 class PredictResponse(BaseModel):
+    matches: list[ObservationMatch] = Field(default_factory=list, description="One ordered match per GPS fix.")
     trip_id: str = Field(..., description="Evaluated trip identifier.")
     model: str = Field(..., description="Model key used for inference.")
     status: str = Field(..., description="Inference execution status.")

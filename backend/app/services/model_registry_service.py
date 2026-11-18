@@ -1,4 +1,6 @@
 import json
+import logging
+from inspect import signature
 from pathlib import Path
 
 from app.core.config import Settings
@@ -9,6 +11,8 @@ from app.schemas.models import (
     ModelsListResponse,
 )
 from models.loader import find_hmm_artifact, find_model_artifact
+from pathsnap.deployment import load_package
+from pathsnap.viterbi import DirectedRoadGraph, decode
 
 MODEL_CATALOG: tuple[dict[str, str], ...] = (
     {
@@ -34,6 +38,24 @@ class ModelRegistryService:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self.final_package = None
+        self.final_artifact = find_model_artifact("final", self._model_search_dirs)
+        config = find_hmm_artifact(self._model_search_dirs)
+        self.final_message = "Final classifier or Viterbi manifest is missing."
+        if self.final_artifact and config:
+            try:
+                package = load_package(self.final_artifact, config)
+                policy = package.manifest["decoder"]
+                required = {p.name for p in signature(decode).parameters.values()
+                            if p.kind == p.KEYWORD_ONLY}
+                if set(policy) != required or package.manifest["classes"] != [0, 1]:
+                    raise ValueError("Invalid v1 decoder manifest")
+                decode(DirectedRoadGraph([], []), [], **policy)
+                self.final_package = package
+                self.final_message = "Verified final classifier and decoder loaded."
+            except Exception:
+                logging.getLogger("pathsnap.api").exception("Failed to load final release")
+                self.final_message = "Final package failed startup verification; check the server log."
 
     @property
     def _model_search_dirs(self) -> list[Path]:
@@ -54,7 +76,7 @@ class ModelRegistryService:
             return path.name
 
     def is_hmm_loaded(self) -> bool:
-        return find_hmm_artifact(self._model_search_dirs) is not None
+        return self.final_package is not None
 
     def known_model_keys(self) -> set[str]:
         return {entry["key"] for entry in MODEL_CATALOG}
@@ -64,8 +86,9 @@ class ModelRegistryService:
         for entry in MODEL_CATALOG:
             if entry["key"] != model_key:
                 continue
-            artifact = find_model_artifact(model_key, self._model_search_dirs)
-            loaded = artifact is not None
+            artifact = (self.final_artifact if model_key == "final" else
+                        find_model_artifact(model_key, self._model_search_dirs))
+            loaded = model_key == "final" and self.final_package is not None
             return ModelInfo(
                 key=entry["key"],
                 name=entry["name"],
@@ -75,9 +98,8 @@ class ModelRegistryService:
                 status="ready" if loaded else "not_ready",
                 artifact_path=self._relative_to_workspace(artifact),
                 message=(
-                    "Trained model artifact detected."
-                    if loaded
-                    else f"{entry['name']} artifact is not trained or exported yet."
+                    self.final_message if model_key == "final"
+                    else f"No compatible inference package is configured for {entry['name']}."
                 ),
             )
         return None
@@ -95,9 +117,7 @@ class ModelRegistryService:
             "One or more trained model artifacts are available."
             if models_ready
             else (
-                "No trained ML model artifacts are currently available. "
-                "Export trained KNN, MLP, or final model artifacts to "
-                "artifacts/models/ to enable live inference."
+                "No verified inference package is ready. Check the final release in artifacts/final/."
             )
         )
         return ModelsListResponse(

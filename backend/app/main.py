@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import Settings, get_settings
 from app.core.logging_config import configure_logging
+from app.services.model_registry_service import ModelRegistryService
 from app.routes import health, models, predict, trips
 
 
@@ -17,6 +18,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        _app.state.model_registry = ModelRegistryService(app_settings)
         logger.info(
             "Starting %s v%s | trip_data_dir=%s | exists=%s",
             app_settings.app_name,

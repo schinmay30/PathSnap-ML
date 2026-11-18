@@ -70,9 +70,8 @@ export default function DashboardPage() {
             PathSnap reconstructs realistic vehicle trajectories by snapping noisy
             1 Hz GPS observations onto directed road-network segments. Machine
             learning classifiers score candidate arcs per observation, while an
-            HMM/Viterbi sequential decoder enforces road-network connectivity and
-            handles GPS dropouts. All model inference and ground-truth accuracy
-            evaluation execute strictly server-side on Laptop 1.
+            calibrated Viterbi decoder selects a road segment for each matched
+            observation and flags jumps and sampling gaps.
           </p>
 
           <div className="pipeline-steps">
@@ -97,17 +96,14 @@ export default function DashboardPage() {
               <div className="pipeline-step-num">Stage 3</div>
               <div className="pipeline-step-title">HMM / Viterbi Decoding</div>
               <div className="pipeline-step-desc">
-                Reconstructs continuous road-segment sequences while resolving
-                disconnected jumps and sampling gaps.
+                Returns ordered matches and separate route components across jumps and gaps.
               </div>
             </div>
             <div className="pipeline-step">
               <div className="pipeline-step-num">Stage 4</div>
-              <div className="pipeline-step-title">Server-Side Evaluation</div>
+              <div className="pipeline-step-title">Route Visualisation</div>
               <div className="pipeline-step-desc">
-                Computes accuracy against isolated server-side{' '}
-                <span className="mono">.route</span> references without exposing
-                labels to the UI.
+                Displays the predicted road segments, matched observations and inference time.
               </div>
             </div>
           </div>
@@ -229,13 +225,13 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <StatusBadge
-                  variant={hmmLoaded ? 'success' : 'neutral'}
+                  variant={findModelStatus(models, 'final')?.loaded ? 'success' : 'neutral'}
                   label={
                     !health.connected
                       ? 'Awaiting Backend'
-                      : hmmLoaded
+                      : findModelStatus(models, 'final')?.loaded
                         ? 'Ready'
-                        : 'Pending Integration'
+                        : 'Unavailable'
                   }
                 />
               </div>

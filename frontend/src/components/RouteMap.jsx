@@ -22,13 +22,11 @@ function normalizeSegments(segments) {
   if (!Array.isArray(segments)) return []
   return segments
     .map((seg) => {
-      if (Array.isArray(seg)) {
-        return seg.map(normalizeLatLngPoint).filter(Boolean)
-      }
-      if (seg && Array.isArray(seg.coordinates)) {
-        return seg.coordinates.map(normalizeLatLngPoint).filter(Boolean)
-      }
-      return []
+      const points = Array.isArray(seg) ? seg : seg?.coordinates
+      if (!Array.isArray(points)) return []
+      const coords = points.map(normalizeLatLngPoint)
+      // Dropping a bad point inside a component would bridge its neighbours.
+      return coords.every(Boolean) ? coords : []
     })
     .filter((coords) => coords.length >= 2)
 }
