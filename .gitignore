@@ -1,26 +1,79 @@
-__pycache__/
-*.py[cod]
+# =============================================================================
+# Python virtual environments & caches
+# =============================================================================
 .venv/
 venv/
-.env
+env/
+backend/.venv/
+backend/venv/
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# =============================================================================
+# Raw datasets, evaluator data & local archives (NEVER commit to Git)
+# =============================================================================
 data/raw/
 data/processed/
-# Keep the extracted raw trip archive outside the repository.
 **/Student folder/
 **/Student_folder/
-# Never add the reserved evaluator partition or evaluator ground truth.
+**/PathSnap_student_materials/
 **/evaluator*/
 **/eval_test/
 **/evaluation_test/
-# Raw trip files are local inputs, not source files.
 **/*.track
 **/*.nodes
 **/*.arcs
 **/*.route
+*.zip
+
+# =============================================================================
+# Model artifacts & experiment logs (track ONLY artifacts/final/*.joblib)
+# =============================================================================
 artifacts/models/
 results/logs/
 *.joblib
 *.pkl
-# keep the final selected model so evaluators can run the API
 !artifacts/final/
 !artifacts/final/*.joblib
+
+# =============================================================================
+# Node.js / Vite frontend
+# =============================================================================
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =============================================================================
+# Environment, secrets, logs & IDE/OS files
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+*.bak
+*.swp
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

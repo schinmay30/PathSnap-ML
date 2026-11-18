@@ -1,7 +1,17 @@
-numpy
-pandas
-scipy
-scikit-learn
-joblib
-matplotlib
-pytest
+# Core ML, Data Processing & Evaluation (Person 1 + Person 4)
+numpy>=2.0.0
+pandas>=2.2.0
+scipy>=1.14.0
+scikit-learn>=1.5.0
+joblib>=1.4.0
+matplotlib>=3.9.0
+networkx>=3.3
+
+# Backend API (Laptop 1 - Person 4)
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
+
+# Automated Testing (Person 1 + Person 4)
+pytest>=8.3.0
+httpx>=0.27.0
