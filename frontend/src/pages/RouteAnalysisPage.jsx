@@ -14,33 +14,14 @@ import RouteMap from '../components/RouteMap'
 import EmptyState from '../components/EmptyState'
 import StatusBadge from '../components/StatusBadge'
 
-const DEFAULT_MODEL_OPTIONS = [
-  {
-    key: 'knn',
-    label: 'KNN',
-    description: 'K-Nearest Neighbors (Instance-based)',
-  },
-  {
-    key: 'mlp',
-    label: 'MLP',
-    description: 'Multi-Layer Perceptron (Neural Network)',
-  },
-]
-
 function extractTripId(trip) {
   if (typeof trip === 'string') return trip
   return trip?.trip_id ?? trip?.id ?? ''
 }
 
-function formatMetric(value, { percent = false, suffix = '', decimals = 4 } = {}) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
-  if (percent) return `${(value * 100).toFixed(2)}%`
-  return `${value.toFixed(decimals)}${suffix}`
-}
-
 export default function RouteAnalysisPage() {
   const [searchParams] = useSearchParams()
-  const { health, trips, models } = useSystem()
+  const { health, trips, tripsError, models, modelsError, loading } = useSystem()
 
   const tripIds = useMemo(
     () => trips.map(extractTripId).filter(Boolean),
@@ -49,7 +30,7 @@ export default function RouteAnalysisPage() {
 
   const initialTripFromQuery = searchParams.get('trip') || ''
   const [selectedTripId, setSelectedTripId] = useState(initialTripFromQuery)
-  const [selectedModel, setSelectedModel] = useState('knn')
+  const [selectedModel, setSelectedModel] = useState('final')
   const [predicting, setPredicting] = useState(false)
   const [predictionError, setPredictionError] = useState(null)
   const [predictionResult, setPredictionResult] = useState(null)
@@ -58,26 +39,24 @@ export default function RouteAnalysisPage() {
     ? selectedTripId
     : tripIds[0] || ''
 
-  const modelOptions = useMemo(() => {
-    const options = [...DEFAULT_MODEL_OPTIONS]
-    models.forEach((m) => {
-      const key = String(m?.key ?? m?.id ?? '').toLowerCase()
-      if (!key || options.some((opt) => opt.key === key)) return
-      options.push({
-        key,
-        label: m?.name || key.toUpperCase(),
-        description: m?.family || 'Registered backend model',
-      })
-    })
-    return options
-  }, [models])
+  const selectedReady = models.some((m) => m.key === selectedModel && m.loaded)
+  const matches = predictionResult?.matches
+  const matched = matches?.filter((m) => m.arc_id != null).length
+  const unmatched = matches && matches.length - matched
+  const jumps = matches?.filter((m) => m.status === 'soft_jump').length
+  const resets = matches?.filter((m) => m.status.endsWith('_reset')).length
+
+  function clearResult() {
+    setPredictionResult(null)
+    setPredictionError(null)
+  }
 
   async function handleRunPrediction(e) {
     e.preventDefault()
-    if (!activeTripId) return
+    if (!activeTripId || !selectedReady || predicting) return
 
     setPredicting(true)
-    setPredictionError(null)
+    clearResult()
 
     const result = await runRoutePrediction({
       tripId: activeTripId,
@@ -93,7 +72,16 @@ export default function RouteAnalysisPage() {
     setPredicting(false)
   }
 
-  const metrics = predictionResult?.metrics || predictionResult?.evaluation || {}
+  const resultStatus = predicting ? 'Running inference' : predictionError ? 'Prediction failed'
+    : !predictionResult ? 'Awaiting prediction' : !matched ? 'No matched observations'
+    : unmatched ? 'Partially matched' : 'Prediction complete'
+  const tiles = predictionResult ? [
+    ['Matched observations', matches ? `${matched.toLocaleString()} / ${matches.length.toLocaleString()}` : '—'],
+    ['Unmatched observations', unmatched], ['Soft jumps', jumps], ['Decoder resets', resets],
+    ['Route components', predictionResult.predicted_route?.length],
+    ['Inference latency', Number.isFinite(predictionResult.inference_time_ms)
+      ? `${predictionResult.inference_time_ms.toFixed(1)} ms` : '—'],
+  ] : []
 
   return (
     <div className="route-analysis-grid">
@@ -121,7 +109,7 @@ export default function RouteAnalysisPage() {
                 id="trip-select"
                 className="form-select mono"
                 value={activeTripId}
-                onChange={(e) => setSelectedTripId(e.target.value)}
+                onChange={(e) => { clearResult(); setSelectedTripId(e.target.value) }}
                 disabled={!health.connected || tripIds.length === 0 || predicting}
               >
                 {tripIds.length === 0 ? (
@@ -148,31 +136,30 @@ export default function RouteAnalysisPage() {
             <div className="form-group">
               <span className="form-label">Classifier Selection</span>
               <div className="model-option-grid">
-                {modelOptions.map((opt) => (
+                {models.map((opt) => (
                   <button
                     key={opt.key}
                     type="button"
                     className={`model-option-btn ${
                       selectedModel === opt.key ? 'selected' : ''
                     }`}
-                    onClick={() => setSelectedModel(opt.key)}
-                    disabled={predicting}
+                    onClick={() => { clearResult(); setSelectedModel(opt.key) }}
+                    disabled={predicting || !opt.loaded}
                   >
-                    <span className="model-option-name">{opt.label}</span>
-                    <span className="model-option-desc">{opt.description}</span>
+                    <span className="model-option-name">{opt.key === 'final' ? 'HistGradientBoosting + Viterbi' : opt.name}</span>
+                    <span className="model-option-desc">{opt.loaded ? 'Ready' : 'Unavailable'}</span>
                   </button>
                 ))}
               </div>
               <span className="form-hint">
-                Selected model identifier is sent with{' '}
-                <span className="mono">POST /api/predict</span>.
+                {loading ? 'Checking model availability…' : !selectedReady ? 'Select a ready model to run inference.' : 'The selected model runs on the backend.'}
               </span>
             </div>
 
             <button
               type="submit"
               className="btn btn-primary btn-full"
-              disabled={!health.connected || !activeTripId || predicting}
+              disabled={!health.connected || !activeTripId || !selectedReady || predicting}
             >
               <Play size={15} />
               <span>
@@ -180,10 +167,10 @@ export default function RouteAnalysisPage() {
               </span>
             </button>
 
-            {predictionError && (
+            {(predictionError || tripsError || modelsError) && (
               <div className="callout callout-error" role="alert">
                 <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                <span>{predictionError}</span>
+                <span>{predictionError || tripsError || modelsError}</span>
               </div>
             )}
 
@@ -230,12 +217,12 @@ export default function RouteAnalysisPage() {
               roadNetwork={predictionResult?.road_network || []}
               predictedRoute={predictionResult?.predicted_route || []}
               emptyTitle={
-                health.connected
+                predictionResult ? 'No route geometry returned' : predicting ? 'Running inference…' : health.connected
                   ? 'Awaiting Route Prediction'
                   : 'Backend Not Connected'
               }
               emptyDescription={
-                health.connected
+                predictionResult ? 'This trip returned no drawable coordinates.' : predicting ? 'Processing the selected trip.' : health.connected
                   ? 'Choose an evaluation trip and model on the left, then click "Run Route Prediction" to fetch and visualize the real trajectory.'
                   : 'Connect Laptop 1 FastAPI backend to load evaluation trips and display predicted GPS routes. No synthetic routes are plotted.'
               }
@@ -249,15 +236,15 @@ export default function RouteAnalysisPage() {
             <div className="card-title-row">
               <CheckCircle2 size={17} color="#1d4ed8" />
               <div>
-                <h3 className="card-title">Prediction &amp; Evaluation Results</h3>
+                <h3 className="card-title">Live Prediction Results</h3>
                 <p className="card-subtitle">
-                  Metrics computed server-side by Laptop 1 upon live inference
+                  Observation assignments and route breaks for the selected trip
                 </p>
               </div>
             </div>
             <StatusBadge
-              variant={predictionResult ? 'success' : 'neutral'}
-              label={predictionResult ? 'Prediction Complete' : 'No Results Yet'}
+              variant={predictionError ? 'error' : matched ? 'success' : 'neutral'}
+              label={resultStatus}
             />
           </div>
 
@@ -265,61 +252,17 @@ export default function RouteAnalysisPage() {
             {!predictionResult ? (
               <EmptyState
                 icon={CheckCircle2}
-                title="No Prediction Executed Yet"
-                description="Once the FastAPI backend processes a selected trip through the ML classifier and HMM/Viterbi decoder, server-computed accuracy, route continuity, and latency metrics will appear here."
+                title={resultStatus}
+                description={predicting ? `Processing trip ${activeTripId}.` : "Run a prediction to see observation coverage and inference time."}
               />
             ) : (
               <div className="metrics-mini-grid">
-                <div className="metric-tile">
-                  <div className="metric-tile-label">Prediction Accuracy</div>
-                  <div className="metric-tile-val mono">
-                    {formatMetric(
-                      metrics.accuracy ?? metrics.route_accuracy,
-                      { percent: true }
-                    )}
+                {tiles.map(([label, value]) => (
+                  <div className="metric-tile" key={label}>
+                    <div className="metric-tile-label">{label}</div>
+                    <div className="metric-tile-val mono">{value ?? '—'}</div>
                   </div>
-                </div>
-                <div className="metric-tile">
-                  <div className="metric-tile-label">Observation Top-1 Accuracy</div>
-                  <div className="metric-tile-val mono">
-                    {formatMetric(metrics.top1_accuracy, { percent: true })}
-                  </div>
-                </div>
-                <div className="metric-tile">
-                  <div className="metric-tile-label">Route Continuity</div>
-                  <div className="metric-tile-val mono">
-                    {formatMetric(metrics.route_continuity, { percent: true })}
-                  </div>
-                </div>
-                <div className="metric-tile">
-                  <div className="metric-tile-label">GPS Observations</div>
-                  <div className="metric-tile-val mono">
-                    {typeof predictionResult.num_gps_points === 'number'
-                      ? predictionResult.num_gps_points.toLocaleString()
-                      : Array.isArray(predictionResult.gps_points)
-                        ? predictionResult.gps_points.length.toLocaleString()
-                        : '—'}
-                  </div>
-                </div>
-                <div className="metric-tile">
-                  <div className="metric-tile-label">Predicted Route Arcs</div>
-                  <div className="metric-tile-val mono">
-                    {typeof predictionResult.num_predicted_arcs === 'number'
-                      ? predictionResult.num_predicted_arcs.toLocaleString()
-                      : Array.isArray(predictionResult.predicted_arc_ids)
-                        ? predictionResult.predicted_arc_ids.length.toLocaleString()
-                        : '—'}
-                  </div>
-                </div>
-                <div className="metric-tile">
-                  <div className="metric-tile-label">Inference Latency</div>
-                  <div className="metric-tile-val mono">
-                    {formatMetric(
-                      predictionResult.inference_time_ms ?? metrics.inference_time_ms,
-                      { decimals: 1, suffix: ' ms' }
-                    )}
-                  </div>
-                </div>
+                ))}
               </div>
             )}
           </div>

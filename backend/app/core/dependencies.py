@@ -1,4 +1,4 @@
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from app.core.config import Settings, get_settings
 from app.services.dataset_service import DatasetService
@@ -12,10 +12,8 @@ def get_dataset_service(
     return DatasetService(settings)
 
 
-def get_model_registry_service(
-    settings: Settings = Depends(get_settings),
-) -> ModelRegistryService:
-    return ModelRegistryService(settings)
+def get_model_registry_service(request: Request) -> ModelRegistryService:
+    return request.app.state.model_registry
 
 
 def get_prediction_service(

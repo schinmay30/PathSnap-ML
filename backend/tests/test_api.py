@@ -1,11 +1,23 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+import pytest
 
-client = TestClient(app)
+from app.core.config import Settings
+from app.main import create_app
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    partition = tmp_path / "student_test"
+    folder = partition / "001"
+    folder.mkdir(parents=True)
+    for suffix, content in [("track", "0 0 0"), ("nodes", "0 0"), ("arcs", "0 0")]:
+        (folder / f"001.{suffix}").write_text(content)
+    monkeypatch.setenv("PATHSNAP_TRIP_DATA_DIR", str(partition))
+    with TestClient(create_app(Settings(workspace_root=tmp_path))) as api:
+        yield api
 
 
-def test_health_endpoint_api_and_root():
+def test_health_endpoint_api_and_root(client):
     for path in ("/api/health", "/health"):
         resp = client.get(path)
         assert resp.status_code == 200
@@ -15,21 +27,21 @@ def test_health_endpoint_api_and_root():
         assert data["dataset_dir_available"] is True
         assert data["active_partition"] == "student_test"
         assert data["partition_role"] == "student_development_test"
-        assert data["available_trip_count"] == 10
+        assert data["available_trip_count"] == 1
         assert data["models_ready"] is False
         assert data["hmm_decoder_loaded"] is False
         assert "timestamp" in data
 
 
-def test_trips_endpoint_discovers_real_student_test_without_leaking_ground_truth():
+def test_trips_endpoint_discovers_configured_partition_without_leaking_ground_truth(client):
     for path in ("/api/trips", "/trips"):
         resp = client.get(path)
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 10
+        assert data["count"] == 1
         assert data["partition"] == "student_test"
         assert data["partition_role"] == "student_development_test"
-        assert len(data["trips"]) == 10
+        assert len(data["trips"]) == 1
 
         first = data["trips"][0]
         assert set(first.keys()) == {"trip_id", "track_points", "num_nodes", "num_arcs"}
@@ -44,7 +56,7 @@ def test_trips_endpoint_discovers_real_student_test_without_leaking_ground_truth
         assert "route_arcs" not in serialized
 
 
-def test_models_endpoint_reports_not_ready_honestly():
+def test_models_endpoint_reports_not_ready_honestly(client):
     for path in ("/api/models", "/models"):
         resp = client.get(path)
         assert resp.status_code == 200
@@ -61,7 +73,7 @@ def test_models_endpoint_reports_not_ready_honestly():
             assert m["artifact_path"] is None
 
 
-def test_model_comparison_endpoint_returns_empty_until_experiments_run():
+def test_model_comparison_endpoint_returns_empty_until_experiments_run(client):
     for path in ("/api/models/comparison", "/models/comparison"):
         resp = client.get(path)
         assert resp.status_code == 200
@@ -70,7 +82,7 @@ def test_model_comparison_endpoint_returns_empty_until_experiments_run():
         assert data["models"] == []
 
 
-def test_predict_valid_trip_returns_503_when_models_not_ready():
+def test_predict_valid_trip_returns_503_when_models_not_ready(client):
     trips_resp = client.get("/api/trips")
     valid_trip_id = trips_resp.json()["trips"][0]["trip_id"]
 
@@ -81,13 +93,13 @@ def test_predict_valid_trip_returns_503_when_models_not_ready():
         assert "not ready" in data["detail"].lower()
 
 
-def test_predict_nonexistent_trip_returns_404():
+def test_predict_nonexistent_trip_returns_404(client):
     resp = client.post("/api/predict", json={"trip_id": "99999999", "model": "knn"})
     assert resp.status_code == 404
     assert "not found" in resp.json()["detail"].lower()
 
 
-def test_predict_unsupported_model_returns_400():
+def test_predict_unsupported_model_returns_400(client):
     trips_resp = client.get("/api/trips")
     valid_trip_id = trips_resp.json()["trips"][0]["trip_id"]
 
@@ -98,18 +110,18 @@ def test_predict_unsupported_model_returns_400():
     assert "unsupported model" in resp.json()["detail"].lower()
 
 
-def test_predict_invalid_trip_id_characters_returns_422():
+def test_predict_invalid_trip_id_characters_returns_422(client):
     resp = client.post("/api/predict", json={"trip_id": "../train/00000001", "model": "knn"})
     assert resp.status_code == 422
     assert resp.json()["code"] == "validation_error"
 
 
-def test_predict_missing_trip_id_returns_422():
+def test_predict_missing_trip_id_returns_422(client):
     resp = client.post("/api/predict", json={"model": "mlp"})
     assert resp.status_code == 422
 
 
-def test_cors_preflight_allows_react_vite_dev_origin():
+def test_cors_preflight_allows_react_vite_dev_origin(client):
     resp = client.options(
         "/api/predict",
         headers={
@@ -123,7 +135,7 @@ def test_cors_preflight_allows_react_vite_dev_origin():
     assert "POST" in resp.headers.get("access-control-allow-methods", "")
 
 
-def test_cors_allows_lan_ip_for_two_laptop_deployment():
+def test_cors_allows_lan_ip_for_two_laptop_deployment(client):
     resp = client.get(
         "/api/health",
         headers={"Origin": "http://192.168.1.42:5173"},
@@ -132,7 +144,7 @@ def test_cors_allows_lan_ip_for_two_laptop_deployment():
     assert resp.headers.get("access-control-allow-origin") == "http://192.168.1.42:5173"
 
 
-def test_swagger_openapi_docs_available():
+def test_swagger_openapi_docs_available(client):
     docs_resp = client.get("/docs")
     assert docs_resp.status_code == 200
     openapi_resp = client.get("/openapi.json")

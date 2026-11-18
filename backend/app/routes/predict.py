@@ -19,9 +19,9 @@ router = APIRouter(tags=["Inference"])
     },
     summary="Run live route prediction for a selected trip",
     description=(
-        "Validates the requested trip_id and model key, executes live map-matching "
-        "inference when trained artifacts are loaded, and computes evaluation "
-        "metrics strictly server-side. Returns HTTP 503 when models are not yet ready."
+        "Runs the verified final package on track, nodes and arcs. Returns 400 for unknown models, "
+        "404 for absent or incomplete trips, 422 for invalid inputs, and 503 for unavailable "
+        "datasets, unreadable files or unready packages. predicted_route contains separate polylines."
     ),
 )
 def post_predict(

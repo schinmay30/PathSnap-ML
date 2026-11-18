@@ -94,7 +94,7 @@ export default function ModelComparisonPage() {
           <div className="card-title-row">
             <TableIcon size={17} color="#1d4ed8" />
             <div>
-              <h3 className="card-title">KNN &amp; MLP Performance Comparison</h3>
+              <h3 className="card-title">Recorded Experiment Results</h3>
               <p className="card-subtitle">
                 Group-aware cross-validation (80 train trips) and development
                 comparison (10 student_test trips)
