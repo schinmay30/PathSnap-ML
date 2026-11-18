@@ -1,0 +1,21 @@
+[
+  "dist_m",
+  "dist_rel_m",
+  "dist_rank",
+  "n_candidates",
+  "arc_length_m",
+  "along_fraction",
+  "heading_cos",
+  "moving",
+  "speed_ms",
+  "nearest_endpoint_m",
+  "previous_step_m",
+  "previous_step_available",
+  "previous_bearing_cos",
+  "previous_bearing_available",
+  "zero_length_arc",
+  "entry_in_degree",
+  "exit_out_degree",
+  "nearest_runner_up_gap_m",
+  "has_runner_up"
+]

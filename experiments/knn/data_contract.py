@@ -141,11 +141,13 @@ def estimate_csv_resources(
         if test_mask.any():
             student_test_trips.update(chunk.loc[test_mask, "trip_id"].dropna().tolist())
 
-    estimated_df_mb = (total_rows * bytes_per_row) / (1024.0 * 1024.0)
-    # Estimate working RAM: DataFrame + scaled float matrix + KD/Ball-tree overhead (~2.5x)
+    # Estimate compact DataFrame RAM (float32 features + categorical strings + int32/int8 metadata)
     bytes_per_feat = 4.0 if use_float32 else 8.0
+    compact_bytes_per_row = len(feature_columns) * bytes_per_feat + 14.0
+    estimated_df_mb = (total_rows * compact_bytes_per_row) / (1024.0 * 1024.0)
+    # Estimate working RAM: compact DataFrame + scaled float matrix + tree/model overhead (~2.0x)
     train_matrix_mb = (train_rows * len(feature_columns) * bytes_per_feat) / (1024.0 * 1024.0)
-    estimated_knn_mb = estimated_df_mb + 2.5 * train_matrix_mb
+    estimated_knn_mb = estimated_df_mb + 2.0 * train_matrix_mb
 
     return DatasetResourceEstimate(
         csv_path=str(path),
@@ -181,45 +183,59 @@ def load_candidate_dataset(
         )
 
     feature_columns = list(estimate.feature_columns)
-    dtype_map: dict[str, object] = {
-        "partition": str,
-        "trip_id": str,
-    }
-    table = pd.read_csv(csv_path, dtype=dtype_map)
+    float_dtype = np.float32 if use_float32 else np.float64
+    chunk_size = (budget.chunk_rows if budget is not None else 100_000)
 
-    if table.empty:
+    chunks: list[pd.DataFrame] = []
+    for chunk in pd.read_csv(
+        csv_path,
+        dtype={"partition": str, "trip_id": str},
+        chunksize=chunk_size,
+    ):
+        if chunk[list(METADATA_COLUMNS)].isna().any().any():
+            raise ValueError("Metadata columns contain missing values.")
+
+        chunk_parts = set(chunk["partition"].unique())
+        if not chunk_parts.issubset(ALLOWED_PARTITIONS):
+            raise ValueError(
+                f"Unexpected partition(s) found: {sorted(chunk_parts - ALLOWED_PARTITIONS)}"
+            )
+
+        chunk["partition"] = chunk["partition"].astype("category")
+        chunk["trip_id"] = chunk["trip_id"].astype(str)
+        chunk["observation_id"] = pd.to_numeric(
+            chunk["observation_id"], errors="raise"
+        ).astype(np.int32)
+        chunk["candidate_arc_id"] = pd.to_numeric(
+            chunk["candidate_arc_id"], errors="raise"
+        ).astype(np.int32)
+        chunk["label"] = pd.to_numeric(chunk["label"], errors="raise").astype(np.int8)
+        if not set(chunk["label"].unique()).issubset({0, 1}):
+            raise ValueError("`label` must contain only binary values 0 and 1.")
+
+        for col in feature_columns:
+            numeric = pd.to_numeric(chunk[col], errors="raise").to_numpy(
+                dtype=float_dtype
+            )
+            if not np.isfinite(numeric).all():
+                raise ValueError(
+                    f"Feature column '{col}' contains NaN or infinite values."
+                )
+            chunk[col] = numeric
+
+        chunks.append(chunk)
+
+    if not chunks:
         raise ValueError("Candidate-feature CSV is empty.")
 
-    if table[list(METADATA_COLUMNS)].isna().any().any():
-        raise ValueError("Metadata columns contain missing values.")
+    table = pd.concat(chunks, ignore_index=True)
+    table["partition"] = table["partition"].astype("category")
+    table["trip_id"] = table["trip_id"].astype("category")
 
-    partitions = set(table["partition"].unique())
-    if not partitions.issubset(ALLOWED_PARTITIONS):
-        raise ValueError(
-            f"Unexpected partition(s) found: {sorted(partitions - ALLOWED_PARTITIONS)}"
-        )
+    partitions = set(table["partition"].astype(str).unique())
     if partitions != ALLOWED_PARTITIONS:
         raise ValueError(
             f"Dataset must contain both 'train' and 'student_test'; found {sorted(partitions)}"
         )
-
-    table["observation_id"] = pd.to_numeric(table["observation_id"], errors="raise").astype(
-        np.int64
-    )
-    table["candidate_arc_id"] = pd.to_numeric(
-        table["candidate_arc_id"], errors="raise"
-    ).astype(np.int64)
-    table["label"] = pd.to_numeric(table["label"], errors="raise").astype(np.int8)
-    if not set(table["label"].unique()).issubset({0, 1}):
-        raise ValueError("`label` must contain only binary values 0 and 1.")
-
-    float_dtype = np.float32 if use_float32 else np.float64
-    for col in feature_columns:
-        numeric = pd.to_numeric(table[col], errors="raise").to_numpy(dtype=float_dtype)
-        if not np.isfinite(numeric).all():
-            raise ValueError(
-                f"Feature column '{col}' contains NaN or infinite values."
-            )
-        table[col] = numeric
 
     return table, feature_columns, estimate

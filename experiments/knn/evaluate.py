@@ -13,10 +13,13 @@ import pandas as pd
 import sklearn
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
+    confusion_matrix,
     f1_score,
     log_loss,
     precision_score,
     recall_score,
+    roc_auc_score,
 )
 from sklearn.model_selection import GroupKFold
 
@@ -142,9 +145,18 @@ def score_predictions(
         frame, probs
     )
     continuity = compute_route_continuity(frame, probs, trip_arcs_by_id)
+    cm = confusion_matrix(y_candidate, y_hat_binary, labels=[0, 1])
+    has_both_classes = len(np.unique(y_candidate)) == 2
+    roc_auc = float(roc_auc_score(y_candidate, probs)) if has_both_classes else None
+    pr_auc = (
+        float(average_precision_score(y_candidate, probs))
+        if has_both_classes
+        else None
+    )
 
     return {
         "model": model_name,
+        "candidate_accuracy": float(accuracy_score(y_candidate, y_hat_binary)),
         "candidate_binary_log_loss": float(
             log_loss(y_candidate, clipped, labels=[0, 1])
         ),
@@ -157,6 +169,15 @@ def score_predictions(
         "candidate_f1": float(
             f1_score(y_candidate, y_hat_binary, zero_division=0)
         ),
+        "candidate_macro_f1": float(
+            f1_score(y_candidate, y_hat_binary, average="macro", zero_division=0)
+        ),
+        "candidate_weighted_f1": float(
+            f1_score(y_candidate, y_hat_binary, average="weighted", zero_division=0)
+        ),
+        "roc_auc": roc_auc,
+        "pr_auc": pr_auc,
+        "confusion_matrix": cm.tolist(),
         "observation_top1_accuracy": obs_top1,
         "observation_macro_f1": obs_macro_f1,
         "route_continuity": continuity,

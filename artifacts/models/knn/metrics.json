@@ -1,0 +1,83 @@
+{
+  "cv_summary": {
+    "model": "knn",
+    "partition": "train_5fold_group_kfold",
+    "metrics_scope": "candidate_selection_only_not_full_route_reconstruction",
+    "cv_splits": 5,
+    "fit_rows_per_fold": 200000,
+    "candidate_accuracy_mean": 0.9587551389099584,
+    "candidate_accuracy_std": 0.008141349282443868,
+    "observation_top1_accuracy_mean": 0.8291344996859253,
+    "observation_top1_accuracy_std": 0.007121402126126853,
+    "observation_macro_f1_mean": 0.7065650183023693,
+    "observation_macro_f1_std": 0.0358875886637565,
+    "candidate_macro_f1_mean": 0.8941292709337023,
+    "candidate_weighted_f1_mean": 0.9575759757928928,
+    "candidate_precision_mean": 0.8691927050380912,
+    "candidate_recall_mean": 0.7610134368981107,
+    "candidate_f1_mean": 0.8114847737704857,
+    "candidate_binary_log_loss_mean": 0.15721619585036203,
+    "candidate_binary_log_loss_std": 0.03043799655469551,
+    "roc_auc_mean": 0.9761281326221425,
+    "pr_auc_mean": 0.8944420982911646,
+    "fit_seconds_mean": 0.08623888000147417,
+    "inference_seconds_mean": 473.6852342600003,
+    "tuning_100k_best_cv_top1": 0.8283560820062805,
+    "route_continuity_mean": null
+  },
+  "student_test": {
+    "model": "knn",
+    "candidate_accuracy": 0.9654246775238624,
+    "candidate_binary_log_loss": 0.11235186048017709,
+    "candidate_precision": 0.8774883336286845,
+    "candidate_recall": 0.7764884219329884,
+    "candidate_f1": 0.8239046034387133,
+    "candidate_macro_f1": 0.9023675117998387,
+    "candidate_weighted_f1": 0.9644839275159063,
+    "roc_auc": 0.983213010773794,
+    "pr_auc": 0.9124156120533018,
+    "confusion_matrix": [
+      [
+        162452,
+        2074
+      ],
+      [
+        4276,
+        14855
+      ]
+    ],
+    "observation_top1_accuracy": 0.8403115362500654,
+    "observation_macro_f1": 0.6780036542871295,
+    "route_continuity": null,
+    "eligible_observations": 19131,
+    "observations_without_positive_candidate_label": 2,
+    "observations_with_multiple_positive_labels": 0,
+    "partition": "student_test_development_evaluation",
+    "metrics_scope": "candidate_selection_only_not_full_route_reconstruction",
+    "train_rows_total": 1591642,
+    "fit_rows_final": 200000,
+    "subsampled_final_train": true,
+    "student_test_rows": 183657,
+    "student_test_trip_count": 10,
+    "training_time_s": 0.0792,
+    "inference_time_s": 230.2563,
+    "model_size_mb": 6.663,
+    "peak_traced_memory_mb": 134.17,
+    "sklearn_version": "1.9.1",
+    "random_state": 42,
+    "configuration": {
+      "n_neighbors": 51,
+      "weights": "distance",
+      "metric": "manhattan",
+      "algorithm": "brute",
+      "n_jobs": -1,
+      "leaf_size": 30,
+      "p": 2,
+      "n_splits": 5,
+      "random_state": 42,
+      "batch_size": 2000,
+      "max_train_rows_per_fold": 200000,
+      "use_float32": true
+    }
+  }
+}
