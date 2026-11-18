@@ -4,35 +4,54 @@ Student project for GPS-to-road map matching and route reconstruction.
 
 ## Data setup
 
-Keep the provided dataset outside Git unless the course organizers explicitly permit publishing it. The data-processing scripts accept the extracted dataset folder as a command-line path. They inspect only `train` and `student_test`; evaluator data is intentionally excluded.
-
-## Person 1: data processing and assigned models
-
-Run:
-
-```powershell
-python scripts/inspect_dataset.py --data-root "PATH_TO_EXTRACTED_STUDENT_FOLDER" --output results/dataset_inventory.csv
-```
-
-`--data-root` should point to a folder containing `train` and `student_test`. If extraction created an extra nested `Student folder` directory, pass the inner folder. The script can also locate that nested layout automatically.
-
-The inventory records file presence and size, row counts, coordinate bounds, timestamp order and gaps, and basic node/arc/route consistency. It does not assume one GPS observation equals one route entry.
-
-Person 1's raw readers are in `src/pathsnap/data_io.py`; `src/pathsnap/preprocess.py` loads and validates a trip while preserving observation order and keeping the reference route separate. Once Person 2 and Person 3 provide the shared candidate-feature CSV, run Person 1's Logistic Regression and Gaussian Naive Bayes experiments with:
+Keep the provided dataset outside Git unless the course organisers explicitly permit publishing it. All scripts take the extracted dataset folder with `--data-root`. They read only `train` and `student_test`; evaluator data is never used. `.gitignore` excludes evaluator partition folders and raw `.track`, `.nodes`, `.arcs`, and `.route` files.
 
 ```powershell
 pip install -r requirements.txt
-python scripts/run_person1_models.py --candidates "PATH_TO_candidate_features.csv"
 ```
 
-The candidate-feature CSV contract is: `partition`, `trip_id`, `observation_id`, `candidate_arc_id`, `label`, followed by numeric feature columns. `partition` must contain `train` and `student_test` only; `label` is 1 for the mapped reference candidate and 0 for other candidates. The label must come from the team's verified route-to-observation alignment; do not assign route rows to GPS rows by position. The script uses GroupKFold by trip on `train`, then evaluates `student_test`. It records observation-level Top-1 Accuracy and Macro F1 plus candidate-level binary Log Loss, and reports observations without exactly one positive candidate label separately.
+## Person 1: data processing, labels and assigned models
+
+| Step | Command | Output |
+|---|---|---|
+| Inventory | `python scripts/inspect_dataset.py --data-root "PATH"` | `results/dataset_inventory.csv` |
+| Exploration | `python scripts/explore_dataset.py --data-root "PATH"` | `results/trajectory_stats.csv`, `network_connectivity.csv`, `label_quality_per_trip.csv`, `results/figures/*.png` |
+| Reference labels | `python scripts/build_labels.py --data-root "PATH"` | `results/labels/observation_labels.csv.gz`, `label_quality_per_trip.csv` |
+| Baseline candidates | `python scripts/build_baseline_candidates.py --data-root "PATH"` | `data/processed/baseline_candidates.csv.gz` (not tracked), `results/candidate_generation_summary.csv` |
+| Models | `python scripts/run_person1_models.py --candidates data/processed/baseline_candidates.csv.gz` | `experiments/person1/results/` |
+| Plots and facts sheet | `python scripts/summarize_person1.py` | `results/figures/person1_*.png`, `results/person1_report_facts.md` |
+| Tests | `python -m pytest tests -q` | |
+
+`inspect_dataset.py` opens the input files for reading and writes its inventory CSV only to the requested output path (default: `results/dataset_inventory.csv`). It does not edit, move, or delete original dataset files.
+
+Findings, assumptions and caveats are in `results/data_quality_notes.md`.
+
+### Shared label table (proposed contract)
+`.route` is a list of arcs in travel order, not one entry per GPS row, and arc IDs are row indices inside one trip's road network. `scripts/build_labels.py` aligns each GPS row to a route arc (monotone dynamic programming, see `src/pathsnap/labels.py`) and writes one row per observation:
+
+`partition, trip_id, observation_id, route_index, arc_id, dist_to_arc_m, label_valid`
+
+- `trip_id` is a zero-padded string (`00000090`); read CSVs with `dtype={"trip_id": str}`.
+- `observation_id` is the 0-based row index in the trip's `.track` file.
+- `label_valid` is False when the row is more than 50 m from its aligned arc. Such rows are dropped, not labelled 0.
+- `pathsnap.labels.label_candidates(candidates, labels)` turns a candidate table into 0/1 labels, and `candidate_miss_rate(...)` reports how often the reference arc is missing from the candidates.
+
+### Baseline candidates (stand-in)
+`src/pathsnap/candidates_baseline.py` generates candidates (all arcs within 50 m, nearest 20) and nine GPS/network-only features so Person 1's models can run now. The reference route is never used for features. Sujeet's candidate generation and Monish's features replace it once ready; the model script only needs the contract below.
+
+### Candidate-feature CSV contract
+`partition`, `trip_id`, `observation_id`, `candidate_arc_id`, `label`, followed by numeric feature columns. `partition` is `train` or `student_test` only. The experiment script uses GroupKFold by trip on `train`, then evaluates on `student_test`. It reports observation-level Top-1 Accuracy and Macro F1 (classes are `trip_id::arc_id`, because arc IDs are not shared across trips) and candidate-level binary Log Loss. Observations without exactly one positive label are counted separately.
 
 ## Repository layout
 
-- `src/pathsnap/data_io.py`: readers for the raw whitespace-separated files.
-- `src/pathsnap/preprocess.py`: trip loader and validation checks.
+- `src/pathsnap/data_io.py`: raw file readers.
+- `src/pathsnap/preprocess.py`: trip loader and validation.
+- `src/pathsnap/geo.py`: local metric projection, haversine, point-to-segment distance.
+- `src/pathsnap/labels.py`: GPS-to-route alignment, candidate labelling, candidate miss rate.
+- `src/pathsnap/network.py`: road-network connectivity statistics.
+- `src/pathsnap/candidates_baseline.py`: stand-in candidate generation and features.
 - `src/pathsnap/person1_models.py`: Logistic Regression and Gaussian Naive Bayes pipelines.
-- `scripts/inspect_dataset.py`: dataset inventory and data-quality report.
-- `scripts/run_person1_models.py`: Person 1 model experiments on the shared candidate table.
-- `results/`: generated summaries; raw data is not stored here.
-
+- `scripts/`: inventory, exploration, label building, Person 1 experiments.
+- `tests/`: unit tests.
+- `results/`: generated tables, figures and notes. Raw data is not stored here.
+- `artifacts/final/`: place for the final selected model (the only `.joblib` location Git tracks).

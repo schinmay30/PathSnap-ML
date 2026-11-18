@@ -5,7 +5,22 @@ venv/
 .env
 data/raw/
 data/processed/
+# Keep the extracted raw trip archive outside the repository.
+**/Student folder/
+**/Student_folder/
+# Never add the reserved evaluator partition or evaluator ground truth.
+**/evaluator*/
+**/eval_test/
+**/evaluation_test/
+# Raw trip files are local inputs, not source files.
+**/*.track
+**/*.nodes
+**/*.arcs
+**/*.route
 artifacts/models/
 results/logs/
 *.joblib
 *.pkl
+# keep the final selected model so evaluators can run the API
+!artifacts/final/
+!artifacts/final/*.joblib

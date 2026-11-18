@@ -18,6 +18,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.metrics import accuracy_score, f1_score, log_loss
 from sklearn.model_selection import GroupKFold
 
@@ -34,7 +35,8 @@ PARTITIONS = {"train", "student_test"}
 
 
 def read_candidate_table(path: Path) -> tuple[pd.DataFrame, list[str]]:
-    table = pd.read_csv(path)
+    # trip_id must stay a string: "00000090" must not become 90.
+    table = pd.read_csv(path, dtype={"trip_id": str})
     missing = METADATA_COLUMNS.difference(table.columns)
     if missing:
         raise ValueError(f"Candidate CSV is missing columns: {sorted(missing)}")
@@ -67,34 +69,32 @@ def read_candidate_table(path: Path) -> tuple[pd.DataFrame, list[str]]:
 def observation_scores(
     frame: pd.DataFrame, probabilities: np.ndarray
 ) -> tuple[float, float, int, int, int]:
-    """Compute Top-1 and Macro F1 for groups with exactly one positive candidate.
+    """Compute Top-1 and Macro F1 for observations with exactly one positive candidate.
 
-    Groups with zero positive candidates are not silently counted as model
-    errors: they indicate a candidate-label coverage issue and are reported.
-    Groups with multiple positive candidates are also reported separately.
+    Observations with zero positive candidates are not counted as model errors:
+    they indicate a candidate-label coverage issue and are reported separately,
+    as are observations with several positives.
+
+    Arc IDs are row indices within ONE trip's road network, so the same number
+    in two trips is a different road. Classes are therefore `trip_id::arc_id`.
     """
-    scored = frame[["trip_id", "observation_id", "candidate_arc_id", "label"]].copy()
-    scored["positive_probability"] = probabilities
-    scored["observation_key"] = (
-        scored["trip_id"].astype(str) + "::" + scored["observation_id"].astype(str)
-    )
-    y_true: list[str] = []
-    y_pred: list[str] = []
-    no_positive = 0
-    multiple_positive = 0
-    for _, group in scored.groupby("observation_key", sort=False):
-        positives = group[group["label"] == 1]
-        if len(positives) == 0:
-            no_positive += 1
-            continue
-        if len(positives) != 1:
-            multiple_positive += 1
-            continue
-        chosen = group.loc[group["positive_probability"].idxmax()]
-        y_true.append(str(positives.iloc[0]["candidate_arc_id"]))
-        y_pred.append(str(chosen["candidate_arc_id"]))
-    if not y_true:
+    keys = ["trip_id", "observation_id"]
+    scored = frame[keys + ["candidate_arc_id", "label"]].copy()
+    scored["trip_id"] = scored["trip_id"].astype(str)
+    scored["p"] = probabilities
+    grouped = scored.groupby(keys, sort=False)
+    n_positive = grouped["label"].sum()
+    no_positive = int((n_positive == 0).sum())
+    multiple_positive = int((n_positive > 1).sum())
+    eligible_keys = n_positive.index[n_positive == 1]
+    if len(eligible_keys) == 0:
         return float("nan"), float("nan"), 0, no_positive, multiple_positive
+
+    best = scored.loc[grouped["p"].idxmax()].set_index(keys).loc[eligible_keys]
+    truth = scored[scored["label"] == 1].set_index(keys).loc[eligible_keys]
+    trip_part = eligible_keys.get_level_values("trip_id").astype(str)
+    y_true = (trip_part + "::" + truth["candidate_arc_id"].astype(str).to_numpy()).to_numpy()
+    y_pred = (trip_part + "::" + best["candidate_arc_id"].astype(str).to_numpy()).to_numpy()
     return (
         float(accuracy_score(y_true, y_pred)),
         float(f1_score(y_true, y_pred, average="macro", zero_division=0)),
@@ -151,13 +151,16 @@ def run_experiments(table: pd.DataFrame, feature_columns: list[str], output_dir:
             splitter.split(X_train, y_train, groups), start=1
         ):
             fold_model = build_models()[model_name]
+            fold_start = time.perf_counter()
             fold_model.fit(X_train.iloc[fit_index], y_train[fit_index])
+            fold_fit_seconds = time.perf_counter() - fold_start
             valid = train.iloc[validation_index]
             valid_probabilities = positive_probability(
                 fold_model, valid[feature_columns]
             )
             metrics = score_predictions(valid, valid_probabilities, model_name)
             metrics["fold"] = fold_index
+            metrics["fit_seconds"] = fold_fit_seconds
             metrics["validation_trip_count"] = valid["trip_id"].nunique()
             fold_rows.append(metrics)
 
@@ -170,8 +173,17 @@ def run_experiments(table: pd.DataFrame, feature_columns: list[str], output_dir:
         final_metrics = score_predictions(
             student_test, test_probabilities, model_name
         )
+        train_metrics = score_predictions(
+            train, positive_probability(model, X_train), model_name
+        )
         final_metrics.update(
             {
+                "train_observation_top1_accuracy": train_metrics["observation_top1_accuracy"],
+                "train_observation_macro_f1": train_metrics["observation_macro_f1"],
+                "train_candidate_binary_log_loss": train_metrics["candidate_binary_log_loss"],
+                "random_state": 42,
+                "cv_splits": n_splits,
+                "sklearn_version": sklearn.__version__,
                 "student_test_trip_count": student_test["trip_id"].nunique(),
                 "fit_seconds_on_all_training_candidates": fit_seconds,
                 "student_test_inference_seconds": inference_seconds,
@@ -183,7 +195,13 @@ def run_experiments(table: pd.DataFrame, feature_columns: list[str], output_dir:
         final_rows.append(final_metrics)
         joblib.dump(model, output_dir / f"{model_name}.joblib")
 
-    pd.DataFrame(fold_rows).to_csv(output_dir / "person1_cv_folds.csv", index=False)
+    folds = pd.DataFrame(fold_rows)
+    folds.to_csv(output_dir / "person1_cv_folds.csv", index=False)
+    cv_summary = folds.groupby("model")[
+        ["observation_top1_accuracy", "observation_macro_f1", "candidate_binary_log_loss", "fit_seconds"]
+    ].agg(["mean", "std"])
+    cv_summary.columns = ["_".join(col) for col in cv_summary.columns]
+    cv_summary.reset_index().to_csv(output_dir / "person1_cv_summary.csv", index=False)
     pd.DataFrame(final_rows).to_csv(
         output_dir / "person1_student_test_results.csv", index=False
     )
