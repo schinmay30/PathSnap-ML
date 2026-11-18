@@ -1,0 +1,90 @@
+[
+  {
+    "model": "Random Forest (Bayesian Tuned)",
+    "family": "Ensemble (Bagging)",
+    "cv_macro_f1": 0.6883,
+    "test_top1_accuracy": 0.8217,
+    "test_macro_f1": 0.6712,
+    "log_loss": 0.2514,
+    "route_continuity": null,
+    "training_time_s": 25.81,
+    "inference_time_s": 0.3084
+  },
+  {
+    "model": "Random Forest (Baseline)",
+    "family": "Ensemble (Bagging)",
+    "cv_macro_f1": 0.6891,
+    "test_top1_accuracy": 0.8218,
+    "test_macro_f1": 0.6696,
+    "log_loss": 0.2507,
+    "route_continuity": null,
+    "training_time_s": 23.52,
+    "inference_time_s": 0.3189
+  },
+  {
+    "model": "Decision Tree (Bayesian Tuned)",
+    "family": "Decision Trees",
+    "cv_macro_f1": 0.6776,
+    "test_top1_accuracy": 0.8138,
+    "test_macro_f1": 0.6558,
+    "log_loss": 0.2678,
+    "route_continuity": null,
+    "training_time_s": 12.23,
+    "inference_time_s": 0.0199
+  },
+  {
+    "model": "Decision Tree (Baseline)",
+    "family": "Decision Trees",
+    "cv_macro_f1": 0.6778,
+    "test_top1_accuracy": 0.8107,
+    "test_macro_f1": 0.6576,
+    "log_loss": 0.2648,
+    "route_continuity": null,
+    "training_time_s": 11.71,
+    "inference_time_s": 0.0218
+  },
+  {
+    "model": "Histogram Gradient Boosting",
+    "family": "Ensemble (Boosting)",
+    "cv_macro_f1": 0.6531,
+    "test_top1_accuracy": 0.8108,
+    "test_macro_f1": 0.6290,
+    "log_loss": 0.0999,
+    "route_continuity": null,
+    "training_time_s": 16.72,
+    "inference_time_s": 0.6891
+  },
+  {
+    "model": "Extra Trees",
+    "family": "Ensemble (Extremely Randomized)",
+    "cv_macro_f1": 0.6536,
+    "test_top1_accuracy": 0.8095,
+    "test_macro_f1": 0.6195,
+    "log_loss": 0.0993,
+    "route_continuity": null,
+    "training_time_s": 64.87,
+    "inference_time_s": 0.9408
+  },
+  {
+    "model": "Logistic Regression",
+    "family": "Linear Models",
+    "cv_macro_f1": 0.6390,
+    "test_top1_accuracy": 0.8061,
+    "test_macro_f1": 0.6106,
+    "log_loss": 0.2356,
+    "route_continuity": null,
+    "training_time_s": 1.55,
+    "inference_time_s": 0.0113
+  },
+  {
+    "model": "Gaussian Naive Bayes",
+    "family": "Probabilistic (Bayes)",
+    "cv_macro_f1": 0.6218,
+    "test_top1_accuracy": 0.7908,
+    "test_macro_f1": 0.5960,
+    "log_loss": 0.5794,
+    "route_continuity": null,
+    "training_time_s": 0.47,
+    "inference_time_s": 0.0230
+  }
+]

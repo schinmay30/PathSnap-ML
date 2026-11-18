@@ -1,0 +1,13 @@
+{
+  "model_type": "decision_tree",
+  "best_trial_number": 7,
+  "cv_macro_f1": 0.6776384207460117,
+  "cv_top1_accuracy": 0.7918646620529393,
+  "cv_log_loss": 0.2753618533773487,
+  "parameters": {
+    "max_depth": 9,
+    "min_samples_leaf": 5,
+    "min_samples_split": 3,
+    "criterion": "entropy"
+  }
+}

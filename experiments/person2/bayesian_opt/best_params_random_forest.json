@@ -1,0 +1,13 @@
+{
+  "model_type": "random_forest",
+  "best_trial_number": 1,
+  "cv_macro_f1": 0.6883382407413018,
+  "cv_top1_accuracy": 0.799204262766412,
+  "cv_log_loss": 0.25106969297651205,
+  "parameters": {
+    "n_estimators": 110,
+    "max_depth": 12,
+    "min_samples_leaf": 13,
+    "max_features": "log2"
+  }
+}
